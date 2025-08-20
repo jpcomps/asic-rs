@@ -8,7 +8,7 @@ jobs:
     name: Cargo Test
     runs-on: ubuntu-latest
     container:
-      image: rust:1.88.0
+      image: rust:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
