@@ -1973,6 +1973,10 @@ impl From<WhatsMinerModel> for MinerHardware {
                 fans: Some(0),
                 boards: Some(vec![Some(380), Some(380), Some(380), Some(380)]),
             },
+            WhatsMinerModel::M73SVM20 => Self {
+                fans: Some(0),
+                boards: Some(vec![Some(288), Some(288), Some(288), Some(288)]),
+            },
             WhatsMinerModel::M73SVM30 => Self {
                 fans: Some(0),
                 boards: Some(vec![Some(304), Some(304), Some(304), Some(304)]),

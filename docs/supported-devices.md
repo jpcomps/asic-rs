@@ -240,7 +240,7 @@ Legend:
 
 	??? note "D1 family (1 model)"
 		 - [x] `VOLCMINER D1`
-??? quote "WhatsMiner (499 models across 32 families)"
+??? quote "WhatsMiner (500 models across 32 families)"
 
 	??? note "M20 family (7 models)"
 		 - [x] `M20PV10`
@@ -758,8 +758,9 @@ Legend:
 	??? note "M72 family (2 models)"
 		 - [x] `M72SVM30`
 		 - [x] `M72VM30`
-	??? note "M73 family (6 models)"
+	??? note "M73 family (7 models)"
 		 - [x] `M73S+VM40`
+		 - [x] `M73SVM20`
 		 - [x] `M73SVM30`
 		 - [x] `M73VL30`
 		 - [x] `M73VM20`

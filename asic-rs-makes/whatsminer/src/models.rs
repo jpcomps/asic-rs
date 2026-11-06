@@ -1479,6 +1479,9 @@ pub enum WhatsMinerModel {
     #[serde(alias = "M73S+VM40")]
     #[algorithm(HashAlgorithm::SHA256)]
     M73SPlusVM40,
+    #[serde(alias = "M73SVM20")]
+    #[algorithm(HashAlgorithm::SHA256)]
+    M73SVM20,
     #[serde(alias = "M73SVM30")]
     #[algorithm(HashAlgorithm::SHA256)]
     M73SVM30,

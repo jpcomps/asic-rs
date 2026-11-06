@@ -1,0 +1,53 @@
+{
+  "code": 0,
+  "when": 1794007623,
+  "msg": {
+    "edevs": [
+      {
+        "id": 0,
+        "slot": 0,
+        "hash-average": 129.313,
+        "factory-hash": 139.391,
+        "freq": 337.1476745605469,
+        "effective-chips": 288,
+        "chip-temp-min": 43,
+        "chip-temp-avg": 49,
+        "chip-temp-max": 55.4
+      },
+      {
+        "id": 1,
+        "slot": 1,
+        "hash-average": 128.03,
+        "factory-hash": 139.391,
+        "freq": 331.2939453125,
+        "effective-chips": 288,
+        "chip-temp-min": 53.1,
+        "chip-temp-avg": 59,
+        "chip-temp-max": 64.6
+      },
+      {
+        "id": 2,
+        "slot": 2,
+        "hash-average": 128.067,
+        "factory-hash": 142.827,
+        "freq": 333.3737487792969,
+        "effective-chips": 288,
+        "chip-temp-min": 53.6,
+        "chip-temp-avg": 58,
+        "chip-temp-max": 65
+      },
+      {
+        "id": 3,
+        "slot": 3,
+        "hash-average": 129.716,
+        "factory-hash": 142.827,
+        "freq": 339.8897705078125,
+        "effective-chips": 288,
+        "chip-temp-min": 43.2,
+        "chip-temp-avg": 49,
+        "chip-temp-max": 55.3
+      }
+    ]
+  },
+  "desc": "get.miner.status"
+}

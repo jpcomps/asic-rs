@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "when": 1794007623,
+  "msg": {
+    "summary": {
+      "elapsed": 619,
+      "freq-avg": 335.42626953125,
+      "factory-hash": 564.436,
+      "hash-average": 460.39,
+      "hash-1min": 515.603,
+      "hash-15min": 460.39,
+      "hash-realtime": 515.603,
+      "power-rate": 14.375,
+      "power-on-stats": {
+        "energy-ws": 4314067,
+        "total-ths": 285734,
+        "total-pool-ths": 326511,
+        "reject-percent": 0.3436426116838488
+      },
+      "power-5min": 7718.86,
+      "power-realtime": 7317,
+      "environment-temperature": 26.8,
+      "board-temperature": [
+        37,
+        37,
+        46.1,
+        46.1
+      ],
+      "chip-temp-min": 43.3,
+      "chip-temp-avg": 53.8,
+      "chip-temp-max": 65.3,
+      "power-limit": 8085,
+      "up-freq-finish": 0,
+      "fan-speed-in": 0,
+      "fan-speed-out": 0,
+      "bootup-time": 6743,
+      "Debug": "1.1 6.6/0.2 6.8/0.3 6.7/0.4 6.6/0.2 "
+    }
+  },
+  "desc": "get.miner.status"
+}

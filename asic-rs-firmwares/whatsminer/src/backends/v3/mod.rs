@@ -21,6 +21,7 @@ use asic_rs_core::{
         message::{MessageSeverity, MinerMessage},
         miner::{MiningMode, TuningTarget},
         pool::{PoolData, PoolGroupData, PoolURL},
+        psu::PsuData,
     },
     traits::{miner::*, model::MinerModel},
     util::is_expected_write_error,
@@ -29,7 +30,7 @@ use asic_rs_makes_whatsminer::hardware::WhatsMinerControlBoard;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use macaddr::MacAddr;
-use measurements::{AngularVelocity, Frequency, Power, Temperature};
+use measurements::{AngularVelocity, Frequency, Power, Temperature, Voltage};
 pub(crate) use rpc::WhatsMinerRPCAPI;
 use semver::Version;
 use serde_json::{Value, json};
@@ -232,7 +233,15 @@ impl GetDataLocations for WhatsMinerV3 {
                 RPC_GET_DEVICE_INFO,
                 DataExtractor {
                     func: get_by_pointer,
-                    key: Some("/msg/power/fanspeed"),
+                    key: Some("/msg/power"),
+                    tag: None,
+                },
+            )],
+            DataField::Psus => vec![(
+                RPC_GET_DEVICE_INFO,
+                DataExtractor {
+                    func: get_by_pointer,
+                    key: Some("/msg/power"),
                     tag: None,
                 },
             )],
@@ -294,14 +303,24 @@ impl GetDataLocations for WhatsMinerV3 {
                     tag: None,
                 },
             )],
-            DataField::FluidTemperature => vec![(
-                rpc_get_miner_status_summary,
-                DataExtractor {
-                    func: get_by_pointer,
-                    key: Some("/msg/summary/environment-temperature"),
-                    tag: None,
-                },
-            )],
+            DataField::FluidTemperature => vec![
+                (
+                    RPC_GET_DEVICE_INFO,
+                    DataExtractor {
+                        func: get_by_pointer,
+                        key: Some("/msg/power/liquid-temperature"),
+                        tag: Some("liquid"),
+                    },
+                ),
+                (
+                    rpc_get_miner_status_summary,
+                    DataExtractor {
+                        func: get_by_pointer,
+                        key: Some("/msg/summary/environment-temperature"),
+                        tag: Some("environment"),
+                    },
+                ),
+            ],
             DataField::IsMining => vec![(
                 RPC_GET_DEVICE_INFO,
                 DataExtractor {
@@ -410,8 +429,10 @@ impl GetHashboards for WhatsMinerV3 {
                     }
                     .as_default_unit()
                 });
+            // The core derives MinerData.average_temperature from board temperatures,
+            // so use each board's average chip temperature rather than its minimum.
             board.board_temperature = hashboard_data
-                .pointer(&format!("/edevs/{idx}/chip-temp-min"))
+                .pointer(&format!("/edevs/{idx}/chip-temp-avg"))
                 .and_then(|val| val.as_f64())
                 .map(Temperature::from_celsius);
             board.inlet_chip_temperature = hashboard_data
@@ -489,22 +510,73 @@ impl GetFans for WhatsMinerV3 {
 }
 impl GetPsuFans for WhatsMinerV3 {
     fn parse_psu_fans(&self, data: &HashMap<DataField, Value>) -> Vec<FanData> {
-        let mut psu_fans: Vec<FanData> = Vec::new();
-
-        let psu_fan = data.extract_map::<f64, _>(DataField::PsuFans, |rpm| FanData {
-            position: 0i16,
-            rpm: Some(AngularVelocity::from_rpm(rpm)),
-        });
-        if let Some(fan_data) = psu_fan {
-            psu_fans.push(fan_data);
+        let Some(power) = data.get(&DataField::PsuFans) else {
+            return vec![];
+        };
+        // Liquid-cooled PSUs have no fan; their `fanspeed` echoes `liquid-temperature`.
+        if power.get("liquid-temperature").is_some() {
+            return vec![];
         }
-        psu_fans
+        power
+            .get("fanspeed")
+            .and_then(Value::as_f64)
+            .map(|rpm| {
+                vec![FanData {
+                    position: 0i16,
+                    rpm: Some(AngularVelocity::from_rpm(rpm)),
+                }]
+            })
+            .unwrap_or_default()
     }
 }
-impl GetPsus for WhatsMinerV3 {}
+impl GetPsus for WhatsMinerV3 {
+    fn parse_psus(&self, data: &HashMap<DataField, Value>) -> Option<Vec<PsuData>> {
+        let power = data.get(&DataField::Psus)?;
+        let text = |key: &str| -> Option<String> {
+            power
+                .get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        };
+        let positive = |key: &str| power.get(key).and_then(Value::as_f64).filter(|v| *v > 0.0);
+        // Three-phase PSUs report one input voltage per phase (`vin`, `vin2`, `vin3`);
+        // PsuData carries a single supply voltage, so report the phase mean.
+        let phases: Vec<f64> = ["vin", "vin2", "vin3"]
+            .into_iter()
+            .filter_map(positive)
+            .collect();
+        let input_voltage = (!phases.is_empty())
+            .then(|| Voltage::from_volts(phases.iter().sum::<f64>() / phases.len() as f64));
+
+        // The single PSU is reported in `get.device.info` `power`; identity-only
+        // entries (no electrical readings) are still returned.
+        let psu = PsuData {
+            position: 0,
+            model: text("model").or_else(|| text("type")),
+            serial_number: text("sn"),
+            firmware_version: text("swversion"),
+            input_voltage,
+            // `vout` is reported in hundredths of a volt (4052 = 40.52 V).
+            output_voltage: positive("vout").map(|v| Voltage::from_volts(v / 100.0)),
+            input_power: positive("pin").map(Power::from_watts),
+            temperature: power
+                .get("temp0")
+                .and_then(Value::as_f64)
+                .map(Temperature::from_celsius),
+            ..Default::default()
+        };
+        (psu != PsuData::default()).then(|| vec![psu])
+    }
+}
 impl GetFluidTemperature for WhatsMinerV3 {
     fn parse_fluid_temperature(&self, data: &HashMap<DataField, Value>) -> Option<Temperature> {
-        data.extract_map::<f64, _>(DataField::FluidTemperature, Temperature::from_celsius)
+        // Water-cooled units report coolant temperature from the PSU; others report
+        // only the ambient (environment) temperature.
+        data.extract_nested::<f64>(DataField::FluidTemperature, "liquid")
+            .or_else(|| data.extract_nested::<f64>(DataField::FluidTemperature, "environment"))
+            .map(Temperature::from_celsius)
     }
 }
 impl GetWattage for WhatsMinerV3 {
@@ -1100,9 +1172,10 @@ mod integration_tests {
 
     use super::*;
     use crate::test::json::v3::{
-        GET_DEVICE_INFO_COMMAND, GET_DEVICE_INFO_WITH_ERRORS_COMMAND,
-        GET_MINER_STATUS_EDEVS_COMMAND, GET_MINER_STATUS_POOLS_COMMAND,
-        GET_MINER_STATUS_SUMMARY_COMMAND,
+        GET_DEVICE_INFO_COMMAND, GET_DEVICE_INFO_HYDRO_COMMAND,
+        GET_DEVICE_INFO_WITH_ERRORS_COMMAND, GET_MINER_STATUS_EDEVS_COMMAND,
+        GET_MINER_STATUS_EDEVS_HYDRO_COMMAND, GET_MINER_STATUS_POOLS_COMMAND,
+        GET_MINER_STATUS_SUMMARY_COMMAND, GET_MINER_STATUS_SUMMARY_HYDRO_COMMAND,
     };
 
     #[tokio::test]
@@ -1184,6 +1257,93 @@ mod integration_tests {
         assert!(miner_data.is_mining);
         assert_eq!(miner_data.fans.len(), 2);
         assert_eq!(miner_data.pools[0].len(), 3);
+        // Air-cooled: real PSU fan, ambient as the environment temperature,
+        // identity-only PSU telemetry.
+        assert_eq!(
+            miner_data.psu_fans[0].rpm,
+            Some(AngularVelocity::from_rpm(6344.0))
+        );
+        assert_eq!(
+            miner_data.fluid_temperature,
+            Some(Temperature::from_celsius(28.5))
+        );
+        let psus = miner_data.psus.expect("PSU identity is reported");
+        assert_eq!(psus[0].model.as_deref(), Some("P221B"));
+        assert_eq!(psus[0].firmware_version.as_deref(), Some("230224.220429"));
+        assert_eq!(psus[0].input_power, None);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_whatsminer_v3_hydro_boards_psu_and_coolant() -> anyhow::Result<()> {
+        // Arrange
+        let miner = WhatsMinerV3::new(IpAddr::from([127, 0, 0, 1]), WhatsMinerModel::M73SVM20);
+        let mut results = HashMap::new();
+        results.insert(
+            MinerCommand::RPC {
+                command: "get.device.info",
+                parameters: None,
+            },
+            Value::from_str(GET_DEVICE_INFO_HYDRO_COMMAND)?,
+        );
+        results.insert(
+            MinerCommand::RPC {
+                command: "get.miner.status",
+                parameters: Some(json!("summary")),
+            },
+            Value::from_str(GET_MINER_STATUS_SUMMARY_HYDRO_COMMAND)?,
+        );
+        results.insert(
+            MinerCommand::RPC {
+                command: "get.miner.status",
+                parameters: Some(json!("edevs")),
+            },
+            Value::from_str(GET_MINER_STATUS_EDEVS_HYDRO_COMMAND)?,
+        );
+        let mock_api = MockAPIClient::new(results);
+
+        // Act
+        let mut collector = DataCollector::new_with_client(&miner, &mock_api);
+        let data = collector.collect_all().await;
+        let miner_data = miner.parse_data(data);
+
+        // Assert: four boards from the model table, populated from edevs.
+        assert_eq!(miner_data.hashboards.len(), 4);
+        let board = &miner_data.hashboards[1];
+        assert_eq!(board.working_chips, Some(288));
+        assert_eq!(board.expected_chips, Some(288));
+        assert_eq!(
+            board.board_temperature,
+            Some(Temperature::from_celsius(59.0))
+        );
+        assert_eq!(
+            board.outlet_chip_temperature,
+            Some(Temperature::from_celsius(64.6))
+        );
+        assert!((board.frequency.unwrap().as_megahertz() - 331.294).abs() < 0.001);
+        // Mean of per-board average chip temperatures (49, 59, 58, 49).
+        assert_eq!(
+            miner_data.average_temperature,
+            Some(Temperature::from_celsius(53.75))
+        );
+
+        // Coolant, not ambient, and no fan on the liquid-cooled PSU.
+        assert_eq!(
+            miner_data.fluid_temperature,
+            Some(Temperature::from_celsius(48.3))
+        );
+        assert!(miner_data.psu_fans.is_empty());
+
+        let psu = &miner_data.psus.expect("PSU telemetry is reported")[0];
+        assert_eq!(psu.model.as_deref(), Some("P566Z"));
+        assert_eq!(psu.firmware_version.as_deref(), Some("1653.1411"));
+        assert_eq!(psu.input_power, Some(Power::from_watts(7317.0)));
+        assert_eq!(psu.temperature, Some(Temperature::from_celsius(46.0)));
+        assert!((psu.output_voltage.unwrap().as_volts() - 40.52).abs() < 1e-9);
+        // Mean of the three phase voltages (405.5, 404.5, 405.5).
+        assert!((psu.input_voltage.unwrap().as_volts() - 405.1667).abs() < 1e-3);
+        assert_eq!(psu.output_power, None);
 
         Ok(())
     }

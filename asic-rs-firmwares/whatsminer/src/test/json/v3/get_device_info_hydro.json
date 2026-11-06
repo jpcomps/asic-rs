@@ -1,0 +1,76 @@
+{
+  "code": 0,
+  "when": 1794007622,
+  "msg": {
+    "network": {
+      "ip": "192.168.1.50",
+      "proto": "dhcp",
+      "netmask": "255.255.255.0",
+      "dns": "192.168.1.1",
+      "mac": "02:00:00:00:04:01",
+      "gateway": "192.168.1.1",
+      "hostname": "WhatsMiner"
+    },
+    "miner": {
+      "working": "true",
+      "type": "M73S_VM21",
+      "hash-board": "M21",
+      "detect-hash-rate": "139391:139391:142827:142827",
+      "cointype": "BTC",
+      "pool-strategy": "FAILOVER",
+      "heatmode": "",
+      "hash-percent": "0",
+      "chipdata0": "CHIPLOT00000000 BIN00-0000000",
+      "chipdata1": "CHIPLOT00000000 BIN00-0000000",
+      "chipdata2": "CHIPLOT00000000 BIN00-0000000",
+      "chipdata3": "CHIPLOT00000000 BIN00-0000000",
+      "fast-boot": "disable",
+      "board-num": "4",
+      "pcbsn0": "PCBSN0000000000000",
+      "pcbsn1": "PCBSN0000000000001",
+      "pcbsn2": "PCBSN0000000000002",
+      "pcbsn3": "PCBSN0000000000003",
+      "miner-sn": "MINERSN000000000000000000000000000",
+      "power-limit-set": "",
+      "UpfreqSpeed": "",
+      "web-pool": 1,
+      "permission": "super=255 user1=0 user2=0 user3=0"
+    },
+    "system": {
+      "api": "3.0.5",
+      "platform": "H616",
+      "fwversion": "20260623.11.REL3",
+      "control-board-version": "CB6V5",
+      "apiswitch": "0",
+      "ledstatus": "auto"
+    },
+    "power": {
+      "type": "P566Z",
+      "mode": "1",
+      "hwversion": "HA3000000",
+      "swversion": "1653.1411",
+      "model": "P566Z",
+      "iin": 10.39,
+      "vin": 405.5,
+      "iin2": 10.52,
+      "vin2": 404.5,
+      "iin3": 10.44,
+      "vin3": 405.5,
+      "vout": 4052,
+      "pin": 7317,
+      "liquid-temperature": 48.3,
+      "fanspeed": 48.3,
+      "temp0": 46,
+      "sn": "PSUSN000000",
+      "vendor": "6"
+    },
+    "salt": "00000000",
+    "error-code": [
+      {
+        "652": "2026-11-07 07:18:09",
+        "reason": "Liquid temperature unstable, temperature change: 12.1!"
+      }
+    ]
+  },
+  "desc": "get.device.info"
+}
