@@ -115,6 +115,14 @@ impl GetConfigsLocations for WhatsMinerV3 {
                         tag: Some("limit"),
                     },
                 ),
+                (
+                    RPC_GET_DEVICE_INFO,
+                    ConfigExtractor {
+                        func: get_by_pointer,
+                        key: Some("/msg/miner/power-limit-set"),
+                        tag: Some("limit_set"),
+                    },
+                ),
             ],
             _ => vec![],
         }
@@ -218,6 +226,14 @@ impl GetDataLocations for WhatsMinerV3 {
                         func: get_by_pointer,
                         key: Some("/msg/summary/power-limit"),
                         tag: Some("limit"),
+                    },
+                ),
+                (
+                    RPC_GET_DEVICE_INFO,
+                    DataExtractor {
+                        func: get_by_pointer,
+                        key: Some("/msg/miner/power-limit-set"),
+                        tag: Some("limit_set"),
                     },
                 ),
             ],
@@ -584,18 +600,40 @@ impl GetWattage for WhatsMinerV3 {
         data.extract_map::<f64, _>(DataField::Wattage, Power::from_watts)
     }
 }
-/// Parses tuning target from V3 tagged data (mode from get.device.info, limit from summary).
-/// Mode "0" (Low) / "2" (High) → MiningMode, "1" (Normal) / unknown → Power(limit).
+/// Parses tuning target from V3 tagged data: mode and the user-set limit
+/// (`power-limit-set`) from get.device.info, effective limit from summary.
+/// Mode "0" (Low) / "2" (High) → MiningMode. Mode "1" (Normal) / unknown →
+/// Power(user-set limit) when one is set, MiningMode::Normal when the firmware
+/// reports none (`power-limit-set` empty), otherwise Power(effective limit).
+/// The effective limit is firmware-capped, so it can differ from the user's.
 fn parse_v3_tuning(tuning: &Value) -> Option<TuningTarget> {
     if let Some(mode_str) = tuning.get("mode").and_then(Value::as_str) {
         match mode_str {
             "0" => return Some(TuningTarget::MiningMode(MiningMode::Low)),
             "2" => return Some(TuningTarget::MiningMode(MiningMode::High)),
-            // "1" (Normal) falls through to power limit
+            // "1" (Normal) falls through to the configured power limit
             other => {
                 tracing::debug!("V3 power mode '{other}' treated as Normal, using power limit")
             }
         }
+    }
+    match tuning.get("limit_set") {
+        Some(Value::String(set)) if set.trim().is_empty() => {
+            return Some(TuningTarget::MiningMode(MiningMode::Normal));
+        }
+        Some(Value::String(set)) => {
+            if let Ok(watts) = set.trim().parse::<f64>()
+                && watts > 0.0
+            {
+                return Some(TuningTarget::Power(Power::from_watts(watts)));
+            }
+        }
+        Some(set) => {
+            if let Some(watts) = set.as_f64().filter(|w| *w > 0.0) {
+                return Some(TuningTarget::Power(Power::from_watts(watts)));
+            }
+        }
+        None => {}
     }
     tuning
         .get("limit")
@@ -1163,6 +1201,43 @@ mod tests {
             TuningTarget::Power(Power::from_watts(3600.0))
         );
     }
+
+    #[test]
+    fn test_parse_tuning_config_user_limit_wins_over_firmware_cap() {
+        // Arrange: user asked for 9000 W; the firmware caps the effective limit at 8085 W.
+        let miner = WhatsMinerV3::new(IpAddr::from([127, 0, 0, 1]), WhatsMinerModel::M73SVM20);
+        let mut data = HashMap::new();
+        data.insert(
+            ConfigField::Tuning,
+            json!({"mode": "1", "limit": 8085, "limit_set": "9000"}),
+        );
+
+        // Act
+        let config = miner.parse_tuning_config(&data).unwrap();
+
+        // Assert
+        assert_eq!(
+            config.target,
+            TuningTarget::Power(Power::from_watts(9000.0))
+        );
+    }
+
+    #[test]
+    fn test_parse_tuning_config_normal_without_user_limit_is_normal_mode() {
+        // Arrange: no user limit; the summary still reports the firmware's effective limit.
+        let miner = WhatsMinerV3::new(IpAddr::from([127, 0, 0, 1]), WhatsMinerModel::M73SVM20);
+        let mut data = HashMap::new();
+        data.insert(
+            ConfigField::Tuning,
+            json!({"mode": "1", "limit": 7736, "limit_set": ""}),
+        );
+
+        // Act
+        let config = miner.parse_tuning_config(&data).unwrap();
+
+        // Assert
+        assert_eq!(config.target, TuningTarget::MiningMode(MiningMode::Normal));
+    }
 }
 
 #[cfg(test)]
@@ -1344,6 +1419,11 @@ mod integration_tests {
         // Mean of the three phase voltages (405.5, 404.5, 405.5).
         assert!((psu.input_voltage.unwrap().as_volts() - 405.1667).abs() < 1e-3);
         assert_eq!(psu.output_power, None);
+        // No user power limit is set on this unit, so it reports Normal mode.
+        assert_eq!(
+            miner_data.tuning_target,
+            Some(TuningTarget::MiningMode(MiningMode::Normal))
+        );
 
         Ok(())
     }
