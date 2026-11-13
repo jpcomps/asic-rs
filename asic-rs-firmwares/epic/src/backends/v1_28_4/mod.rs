@@ -41,6 +41,8 @@ use tokio::sync::OnceCell;
 
 use crate::firmware::EPicFirmware;
 
+pub(crate) const MIN_VERSION: Version = Version::new(1, 28, 4);
+
 /// EPIC firmware 1.28.4 and newer, collecting messages only from `/errors/history`.
 #[derive(Debug)]
 pub struct PowerPlayV1284 {
@@ -62,7 +64,7 @@ impl PowerPlayV1284 {
         }
     }
 
-    pub(crate) fn set_restore_stock_os_support(&mut self, supported: bool) {
+    pub(in crate::backends) fn set_restore_stock_os_support(&mut self, supported: bool) {
         self.restore_stock_os_supported = OnceCell::new_with(Some(supported));
     }
 
@@ -1986,8 +1988,18 @@ impl UpgradeFirmware for PowerPlayV1284 {
     }
 
     async fn check_firmware_update(&self) -> anyhow::Result<FirmwareStats> {
-        let data = self
-            .get_collector()
+        self.check_firmware_update_with_client(self).await
+    }
+
+    fn supports_check_firmware_update_with_client(&self) -> bool {
+        true
+    }
+
+    async fn check_firmware_update_with_client(
+        &self,
+        client: &dyn APIClient,
+    ) -> anyhow::Result<FirmwareStats> {
+        let data = DataCollector::new_with_client(self, client)
             .collect(&[DataField::ControlBoardVersion, DataField::FirmwareVersion])
             .await;
         let platform = data.extract_nested::<String>(DataField::ControlBoardVersion, "platform");
@@ -2026,7 +2038,7 @@ impl Validate for PowerPlayV1284 {
     type Firmware = EPicFirmware;
 
     fn validate(version: Option<&Version>) -> bool {
-        version.is_some_and(|v| *v >= Version::new(1, 28, 4))
+        version.is_some_and(|v| v >= &MIN_VERSION)
     }
 }
 

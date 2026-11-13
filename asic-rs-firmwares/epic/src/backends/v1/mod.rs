@@ -69,7 +69,7 @@ impl PowerPlayV1 {
         miner
     }
 
-    pub(crate) fn set_restore_stock_os_support(&mut self, supported: bool) {
+    pub(in crate::backends) fn set_restore_stock_os_support(&mut self, supported: bool) {
         self.restore_stock_os_supported = OnceCell::new_with(Some(supported));
     }
 
@@ -1987,8 +1987,18 @@ impl UpgradeFirmware for PowerPlayV1 {
     }
 
     async fn check_firmware_update(&self) -> anyhow::Result<FirmwareStats> {
-        let data = self
-            .get_collector()
+        self.check_firmware_update_with_client(self).await
+    }
+
+    fn supports_check_firmware_update_with_client(&self) -> bool {
+        true
+    }
+
+    async fn check_firmware_update_with_client(
+        &self,
+        client: &dyn APIClient,
+    ) -> anyhow::Result<FirmwareStats> {
+        let data = DataCollector::new_with_client(self, client)
             .collect(&[DataField::ControlBoardVersion, DataField::FirmwareVersion])
             .await;
         let platform = data.extract_nested::<String>(DataField::ControlBoardVersion, "platform");
@@ -2027,7 +2037,7 @@ impl Validate for PowerPlayV1 {
     type Firmware = EPicFirmware;
 
     fn validate(version: Option<&Version>) -> bool {
-        version.is_none_or(|v| *v < Version::new(1, 28, 4))
+        version.is_none_or(|v| v < &super::v1_28_4::MIN_VERSION)
     }
 }
 
